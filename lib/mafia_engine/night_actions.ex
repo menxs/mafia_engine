@@ -1,39 +1,49 @@
 defmodule MafiaEngine.NightActions do
 	alias MafiaEngine.Player
 
+	@type t :: %{optional(String.t) => {MafiaEngine.Role.t, String.t}}
+
+	@type action :: {String.t, MafiaEngine.Role.t, String.t}
+
+	@type event :: {String.t, MafiaEngine.Role.outcome, String.t}
+
+	@spec new() :: t
 	def new(), do: %{}
 
+	@spec unselect(t, String.t) :: t
 	def unselect(night_actions, actor) do
-		{:ok, Map.delete(night_actions, actor)}
+		Map.delete(night_actions, actor)
 	end
 
-	def select(night_actions, actor_name, %Player{} = actor_player,
-							target_name, %Player{} = target_player) do
+	@spec select(t, MafiaEngine.Player.t, MafiaEngine.Player.t) :: {:ok, t}
+	| {:error, reason :: atom}
+	def select(night_actions, %Player{} = actor, %Player{} = target) do
 		with :ok <-
-			check_action(actor_name, actor_player, target_name, target_player)
+			check_action(actor, target)
 		do
-			{:ok, Map.put(night_actions, actor_name, {actor_player.role, target_name})}
+			{:ok, Map.put(night_actions, actor.name, {actor.role, target.name})}
 		else
 			{:error, reason} -> {:error, reason}
 		end
 	end
 
+	@spec execute(t) :: list(event)
 	def execute(night_actions) do
-		events =
 			night_actions
 			|> actions_to_list()
 			|> mafia_attacks()
 			|> doctor_heals()
 			|> sheriff_investigates()
-		{:ok, events}
 	end
 
+	@spec actions_to_list(t) :: list(action)
 	defp actions_to_list(night_actions) do
 		night_actions
 		|> Map.to_list()
 		|> Enum.map(fn {actor, {role, target}} -> {actor, role, target} end)
 	end
 
+	@spec mafia_attacks(list(action | event)) :: list(action | event)
 	defp mafia_attacks(events) do
 		with  {[_ | _] = mafioso_events, events} <-
 			Enum.split_with(events, fn {_actor, role, _target} -> role == :mafioso end)
@@ -58,6 +68,7 @@ defmodule MafiaEngine.NightActions do
 		end
 	end
 
+	@spec doctor_heals(list(action | event)) :: list(action | event)
 	defp doctor_heals(events) do
 		with {[_ | _] = doctor_events, events} <-
 			Enum.split_with(events, fn {_actor, role, _target} -> role == :doctor end)
@@ -68,6 +79,7 @@ defmodule MafiaEngine.NightActions do
 		end
 	end
 
+	@spec process_doctor_action(action | event, list(event)) :: action | event
 	defp process_doctor_action({_actor, :kill, target} = event, doctor_events) do
 		healed =
 			Enum.find(doctor_events, :none,
@@ -82,37 +94,35 @@ defmodule MafiaEngine.NightActions do
 	end
 	defp process_doctor_action(event, _doctor_events), do: event
 
+
+	@spec sheriff_investigates(list(action | event)) :: list(action | event)
 	defp sheriff_investigates(events) do
 		Enum.map(events, &process_sheriff_action/1)
 	end
 
+	@spec process_sheriff_action(action | event) :: action | event
 	defp process_sheriff_action({actor, :sheriff, target}), do:
 		{actor, :investigate, target}
 	defp process_sheriff_action(event), do: event
 
-	defp check_action(_actor_name, %{alive: false}, _target_name, _) do
+	@spec check_action(MafiaEngine.Player.t, MafiaEngine.Player.t) :: :ok | {:error, reason :: atom}
+	defp check_action(%{alive: false}, _target) do
 		{:error, :cannot_act_while_dead}
 	end
 
-	defp check_action(_actor_name, _, _target_name, %{alive: false}) do
+	defp check_action(_actor, %{alive: false}) do
 		{:error, :cannot_target_dead_players}
 	end
 
-	defp check_action(_actor_name, %{role: :townie}, _target_name, _) do
+	defp check_action(%{role: :townie}, _target) do
 		{:error, :townie_cannot_target}
 	end
 
-	defp check_action(same_name, %{role: :mafioso}, same_name, _) do
-		{:error, :mafioso_cannot_target_himself}
-	end
-
-	defp check_action(_actor_name, %{role: :mafioso},
-										_target_name, %{role: :mafioso}) do
+	defp check_action(%{role: :mafioso}, %{role: :mafioso}) do
 		{:error, :mafioso_cannot_target_mafiosos}
 	end
 
-	#Check the role exists
-	defp check_action(_actor_name, _, _target_name, _) do
+	defp check_action(_actor, _target) do
 		:ok
 	end
 end

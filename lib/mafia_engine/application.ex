@@ -15,10 +15,9 @@ defmodule MafiaEngine.Application do
         partitions: System.schedulers_online()
       },
       MafiaEngine.GameSupervisor
-      # Starts a worker by calling: MafiaEngine.Worker.start_link(arg)
-      # {MafiaEngine.Worker, arg}
     ]
 
+    :rand.uniform()
     :ets.new(:game_state, [:public, :named_table])
     opts = [strategy: :one_for_one, name: MafiaEngine.Supervisor]
     Supervisor.start_link(children, opts)

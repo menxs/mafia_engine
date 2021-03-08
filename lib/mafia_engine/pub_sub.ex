@@ -4,8 +4,8 @@ defmodule MafiaEngine.PubSub do
 		Registry.register(Registry.GamePubSub, game_id, ref)
 
 	def sub_player(game_id, name, ref) do
-		unsub(game_id, ref)
 		sub(game_id, name)
+		unsub(game_id, ref)
 	end
 
 	def unsub(game_id, ref), do:
@@ -29,27 +29,19 @@ defmodule MafiaEngine.PubSub do
 			end
 		end)
 
-	def pub_state(game_id, state), do:
-		pub(game_id, {:game_update, :state, {:playing, state}})
-
-	def pub_players(game_id, players) do
-		public_players =
-			players
-			|> Enum.map(fn {name, info} ->
-										{name, Map.drop(info, [:role, :__struct__])}
-									end)
-			|> Map.new()
-		pub(game_id, {:game_update, :players, public_players})
-	end
-
 	def pub_roles(game_id, players) do
-		for {name, info} <- players do
-			pub_player(game_id, name, {:player_update, :role, info.role})
+		#Tell everyone their role
+		for p <- players do
+			pub_player(game_id, p.name, {:player_update, :role, {p.name, p.role}})
 		end
-	end
-
-	def pub_accusations(game_id, accusations) do
-		pub(game_id, {:game_update, :accusations, accusations})
+		#Tell the mafia their allies roles
+		mafiosos = Enum.filter(players, fn p -> p.role == :mafioso end)
+		Enum.map(mafiosos,
+				fn p ->
+					for ally <- mafiosos do
+						pub_player(game_id, p.name, {:player_update, :role, {ally.name, p.role}})
+					end
+				end)
 	end
 
 end
