@@ -7,7 +7,8 @@ defmodule MafiaEngine.MixProject do
       version: "0.1.0",
       elixir: "~> 1.11",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      dialyzer: dialyzer_opts()
     ]
   end
 
@@ -22,10 +23,29 @@ defmodule MafiaEngine.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:propcheck, "~> 1.3", only: [:test, :dev]},
       {:ex_doc, "~> 0.23", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:gen_state_machine, "~> 3.0"}
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
     ]
   end
+
+  defp dialyzer_opts do
+    [
+      plt_add_apps: [:ex_unit],
+      # Writes the plt file in that path. Used in CI
+      plt_file: {:no_warn, "priv/plts/sorted.plt"},
+      flags: [
+        :unmatched_returns,
+        :no_unused, 
+        :no_match,
+        :no_missing_calls,
+        :error_handling,
+        :underspecs
+      ]
+    ]
+  end
+
 end

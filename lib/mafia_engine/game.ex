@@ -70,6 +70,15 @@ defmodule MafiaEngine.Game do
 
 	@impl true
 	def terminate({:shutdown, _reason}, _state, data) do
+		IO.puts("Deleting everything")
+		PubSub.pub(data.game_id, {:game_update, :state, :shutdown})
+		PubSub.unsub_all(data.game_id)
+		:ets.delete(:game_state, data.game_id)
+		:ok
+	end
+
+	@impl true
+	def terminate(:normal, _state, data) do
 		PubSub.pub(data.game_id, {:game_update, :state, :shutdown})
 		PubSub.unsub_all(data.game_id)
 		:ets.delete(:game_state, data.game_id)

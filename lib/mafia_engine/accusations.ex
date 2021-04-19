@@ -10,7 +10,7 @@ defmodule MafiaEngine.Accusations do
 		...> jeff = MafiaEngine.Player.new("Jeff")
 		...> {:ok, a} = MafiaEngine.Accusations.accuse(a, abed, jeff)
 		{:ok, %MafiaEngine.Accusations{ballots: %{"Abed" => "Jeff"}, required: 2}}
-		iex> a = MafiaEngine.Accusations.withdraw(a, abed)
+		iex> a = MafiaEngine.Accusations.withdraw(a, "Abed")
 		%MafiaEngine.Accusations{ballots: %{}, required: 2}
 		iex> {:ok, a} = MafiaEngine.Accusations.accuse(a, jeff, abed)
 		...> MafiaEngine.Accusations.accuse(a, abed, abed)

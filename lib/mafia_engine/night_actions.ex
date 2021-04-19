@@ -52,7 +52,6 @@ defmodule MafiaEngine.NightActions do
 				mafioso_events
 				|> Enum.map(fn {_actor, _role, target} -> target end)
 				|> Enum.frequencies()
-				|> Enum.shuffle()
 				|> Enum.max_by(fn {_target, freq} -> freq end)
 				|> elem(0)
 

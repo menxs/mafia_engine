@@ -15,7 +15,7 @@ defmodule MafiaEngine.Votes do
 		#MapSet<["Abed"]>
 		iex> MafiaEngine.Votes.result(v)
 		:innocent
-		iex> v = MafiaEngine.Votes.remove_vote(v, abed)
+		iex> v = MafiaEngine.Votes.remove_vote(v, "Abed")
 		...> v.innocent
 		#MapSet<[]>
 		iex> MafiaEngine.Votes.result(v)
