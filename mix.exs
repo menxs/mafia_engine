@@ -7,6 +7,8 @@ defmodule MafiaEngine.MixProject do
       version: "0.1.0",
       elixir: "~> 1.11",
       start_permanent: Mix.env() == :prod,
+      description: description(),
+      package: package(),
       deps: deps(),
       dialyzer: dialyzer_opts()
     ]
