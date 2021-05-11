@@ -1,10 +1,9 @@
 defmodule MafiaEngine.Game do
 	use GenStateMachine, callback_mode: [:state_functions, :state_enter], restart: :transient
 
-	alias MafiaEngine.{Player, Players, Accusations, Votes, NightActions, PubSub}
+	alias MafiaEngine.{Player, Players, Settings, Accusations, Votes, NightActions, PubSub}
 
-	@afk_timeout_action  {{:timeout, :afk}, 24 * 60 * 60 * 1000, :exterminate}
-	@timeout 5 * 60 * 1000
+	@afk_timeout_action  {{:timeout, :afk}, 45 * 60 * 1000, :exterminate}
 
 	#============================================================================#
 	# Client Functions                                                           #
@@ -16,9 +15,6 @@ defmodule MafiaEngine.Game do
 	def via_tuple(game_id), do: {:via, Registry, {Registry.Game, game_id}}
 
 	#----------------------------------------------------------------------------- Afterinterface
-
-	def get_players(game), do:
-		GenStateMachine.cast(via_tuple(game), :get_players)
 
 	def next_phase(game), do:
 		GenStateMachine.cast(via_tuple(game), :next_phase)
@@ -34,8 +30,23 @@ defmodule MafiaEngine.Game do
 	def remove_player(game, name), do:
 		GenStateMachine.cast(via_tuple(game), {:remove_player, name})
 
+	def increase_role(game, role), do:
+		GenStateMachine.cast(via_tuple(game), {:change_role, :inc, role})
+
+	def decrease_role(game, role), do:
+		GenStateMachine.cast(via_tuple(game), {:change_role, :dec, role})
+
+	def increase_timer(game, phase), do:
+		GenStateMachine.cast(via_tuple(game), {:change_timer, :inc, phase})
+
+	def decrease_timer(game, phase), do:
+		GenStateMachine.cast(via_tuple(game), {:change_timer, :dec, phase})
+
 	def start_game(game), do:
 		GenStateMachine.cast(via_tuple(game), :start_game)
+
+	def talk_to(game, author), do:
+		GenStateMachine.call(via_tuple(game), {:talk_to, author})
 
 	def accuse(game, accuser, accused), do:
 		GenStateMachine.cast(via_tuple(game), {:accuse, accuser, accused})
@@ -113,16 +124,13 @@ defmodule MafiaEngine.Game do
 
 	def initialized(:enter, _old_state, _data), do: :keep_state_and_data
 
-	def initialized(:cast, :get_players, data) do
-		players_without_role = Enum.map(data.players, &Player.set_role(&1, :unknown))
-		PubSub.pub(data.game_id, {:game_update, :players, players_without_role})
-		:keep_state_and_data
-	end
-
 	def initialized({:call, from}, {:add_player, name}, data) do
 		with {:ok, players} <- Players.add(data.players, name)
 		do
-			updated_data = update_players(data, players)
+			updated_data = 
+				data
+				|> update_players(players)
+				|> update_settings(Settings.player_added(data.settings, length(players)))
 			success(:keep_state, :initialized, updated_data,
 							[{:reply, from, {:ok, players}}])
 		else
@@ -133,17 +141,32 @@ defmodule MafiaEngine.Game do
 	def initialized(:cast, {:remove_player, name}, data) do
 		players = Players.remove(data.players, name)
 		if length(players) > 0 do
-			updated_data = update_players(data, players)
+			updated_data =
+				data
+				|> update_players(players)
+				|> update_settings(Settings.player_left(data.settings, length(players)))
 			success(:keep_state, :initialized, updated_data)
 		else
 			{:stop, {:shutdown, :zero_players}}
 		end
 	end
 
+	def initialized(:cast, {:change_role, inc_or_dec, role}, data) do
+		settings = Settings.change_role(data.settings, inc_or_dec, role, length(data.players))
+		updated_data = update_settings(data, settings)
+		success(:keep_state, :initialized, updated_data)
+	end
+
+	def initialized(:cast, {:change_timer, inc_or_dec, phase}, data) do
+		settings = Settings.change_timer(data.settings, inc_or_dec, phase)
+		updated_data = update_settings(data, settings)
+		success(:keep_state, :initialized, updated_data)
+	end
+
 	def initialized({:call, from}, :started?, _), do: {:keep_state_and_data, [{:reply, from, false}]}
 
 	def initialized(:cast, :start_game, data) do
-		roles = roles(length(data.players))
+		roles = roles(length(data.players), data.settings.roles)
 		players = Players.set_roles(data.players, roles)
 		updated_data = update_players(data, players)
 		PubSub.pub_roles(data.game_id, players)
@@ -162,9 +185,17 @@ defmodule MafiaEngine.Game do
 
 	def morning(:enter, _old_state, data), do:
 		success(:keep_state_and_data, :morning, data,
-						[{:state_timeout, @timeout, :go_next}])
+						[{:state_timeout, data.settings.timer.morning, :go_next}])
 
 	def morning({:call, from}, :started?, _), do: {:keep_state_and_data, [{:reply, from, true}]}
+
+	def morning({:call, from}, {:talk_to, name}, data) do
+		with  %Player{} = author <- Players.get(data.players, name) do
+			{:keep_state_and_data, [{:reply, from, {author.alive, :everyone}}]}
+		else
+			:none -> reply_error(from, {:error, :unknown_author})
+		end
+	end
 
 	def morning(:cast, :next_phase, _data), do:
 		{:keep_state_and_data, [{:state_timeout, 0, :go_next}]}
@@ -183,7 +214,7 @@ defmodule MafiaEngine.Game do
 
 	def accusation(:enter, :initializing, data), do:
 		success(:keep_state_and_data, :accusation, data,
-						[{:state_timeout, @timeout, :go_next}])
+						[{:state_timeout, data.settings.timer.accusation, :go_next}])
 
 	def accusation(:enter, _old_state, data) do
 		required =
@@ -194,7 +225,7 @@ defmodule MafiaEngine.Game do
 			|> (& &1 + 1).()
 		updated_data = update_accusations(data, Accusations.new(required))
 		success(:keep_state, :accusation, updated_data,
-						[{:state_timeout, @timeout, :go_next}])
+						[{:state_timeout, data.settings.timer.accusation, :go_next}])
 	end
 
 	def accusation({:call, from}, :started?, _), do: {:keep_state_and_data, [{:reply, from, true}]}
@@ -232,6 +263,14 @@ defmodule MafiaEngine.Game do
 		success(:keep_state, :accusation, updated_data)
 	end
 
+	def accusation({:call, from}, {:talk_to, name}, data) do
+		with  %Player{} = author <- Players.get(data.players, name) do
+			{:keep_state_and_data, [{:reply, from, {author.alive, :everyone}}]}
+		else
+			:none -> reply_error(from, {:error, :unknown_author})
+		end
+	end
+
 	def accusation(:cast, :next_phase, _data), do:
 		{:keep_state_and_data, [{:state_timeout, 0, :go_next}]}
 
@@ -249,10 +288,18 @@ defmodule MafiaEngine.Game do
 
 	def defense(:enter, _old_state, data) do
 		success(:keep_state_and_data, :defense, data,
-						[{:state_timeout, @timeout, :go_next}])
+						[{:state_timeout, data.settings.timer.defense, :go_next}])
 	end
 
 	def defense({:call, from}, :started?, _), do: {:keep_state_and_data, [{:reply, from, true}]}
+
+	def defense({:call, from}, {:talk_to, name}, data) do
+		with  %Player{} = author <- Players.get(data.players, name) do
+			{:keep_state_and_data, [{:reply, from, {name == data.votes.accused, :everyone}}]}
+		else
+			:none -> reply_error(from, {:error, :unknown_author})
+		end
+	end
 
 	def defense(:cast, :next_phase, _data), do:
 		{:keep_state_and_data, [{:state_timeout, 0, :go_next}]}
@@ -271,7 +318,7 @@ defmodule MafiaEngine.Game do
 
 	def judgement(:enter, _old_state, data), do:
 		success(:keep_state_and_data, :judgement, data,
-						[{:state_timeout, @timeout, :go_next}])
+						[{:state_timeout, data.settings.timer.judgement, :go_next}])
 
 	def judgement({:call, from}, :started?, _), do: {:keep_state_and_data, [{:reply, from, true}]}
 
@@ -293,6 +340,14 @@ defmodule MafiaEngine.Game do
 		votes = Votes.remove_vote(data.votes, voter)
 		updated_data = update_votes(data, votes)
 		success(:keep_state, :judgement, updated_data)
+	end
+
+	def judgement({:call, from}, {:talk_to, name}, data) do
+		with  %Player{} = author <- Players.get(data.players, name) do
+			{:keep_state_and_data, [{:reply, from, {author.alive, :everyone}}]}
+		else
+			:none -> reply_error(from, {:error, :unknown_author})
+		end
 	end
 
 	def judgement(:cast, :next_phase, _data), do:
@@ -323,9 +378,17 @@ defmodule MafiaEngine.Game do
 
 	def afternoon(:enter, _old_state, data), do:
 		success(:keep_state_and_data, :afternoon, data,
-						[{:state_timeout, @timeout, :go_next}])
+						[{:state_timeout, data.settings.timer.afternoon, :go_next}])
 
 	def afternoon({:call, from}, :started?, _), do: {:keep_state_and_data, [{:reply, from, true}]}
+
+	def afternoon({:call, from}, {:talk_to, name}, data) do
+		with  %Player{} = author <- Players.get(data.players, name) do
+			{:keep_state_and_data, [{:reply, from, {author.alive, :everyone}}]}
+		else
+			:none -> reply_error(from, {:error, :unknown_author})
+		end
+	end
 
 	def afternoon(:cast, :next_phase, _data), do:
 		{:keep_state_and_data, [{:state_timeout, 0, :go_next}]}
@@ -344,12 +407,12 @@ defmodule MafiaEngine.Game do
 
 	def night(:enter, :initializing, data), do:
 		success(:keep_state_and_data, :night, data,
-						[{:state_timeout, @timeout, :go_next}])
+						[{:state_timeout, data.settings.timer.night, :go_next}])
 
 	def night(:enter, _old_state, data) do
 		updated_data = update_night_actions(data, NightActions.new())
 		success(:keep_state, :night, updated_data,
-						[{:state_timeout, @timeout, :go_next}])
+						[{:state_timeout, data.settings.timer.night, :go_next}])
 	end
 
 	def night({:call, from}, :started?, _), do: {:keep_state_and_data, [{:reply, from, true}]}
@@ -373,6 +436,14 @@ defmodule MafiaEngine.Game do
 		success(:keep_state, :night, updated_data)
 	end
 
+	def night({:call, from}, {:talk_to, name}, data) do
+		with  %Player{} = author <- Players.get(data.players, name) do
+			{:keep_state_and_data, [{:reply, from, {author.alive and author.role == :mafioso, :mafioso}}]}
+		else
+			:none -> reply_error(from, {:error, :unknown_author})
+		end
+	end
+
 	def night(:cast, :next_phase, _data), do:
 		{:keep_state_and_data, [{:state_timeout, 0, :go_next}]}
 
@@ -392,11 +463,17 @@ defmodule MafiaEngine.Game do
 	# Game Over state                                                            #
 	#----------------------------------------------------------------------------#
 
-	def game_over(:enter, _old_state, data), do:
+	def game_over(:enter, _old_state, data) do
+		PubSub.pub(data.game_id, {:game_update, :players, data.players})
+		PubSub.pub(data.game_id, {:game_update, :winner, data.winner})
 		success(:keep_state_and_data, :game_over, data,
-						[{:state_timeout, @timeout, :exterminate}])
+						[{:state_timeout, data.settings.timer.game_over, :exterminate}])
+	end
 
 	def game_over({:call, from}, :started?, _), do: {:keep_state_and_data, [{:reply, from, true}]}
+
+	def game_over({:call, from}, {:talk_to, _name}, _data), do:
+		{:keep_state_and_data, [{:reply, from, {true, :everyone}}]}
 
 	def game_over(:cast, :next_phase, _data), do:
 		{:keep_state_and_data, [{:state_timeout, 0, :exterminate}]}
@@ -413,6 +490,7 @@ defmodule MafiaEngine.Game do
 	defp fresh_data(game_id) do
 		%{
 			game_id: game_id,
+			settings: Settings.new(),
 			players: Players.new(),
 			accusations: nil,
 			votes: nil,
@@ -422,10 +500,17 @@ defmodule MafiaEngine.Game do
 
 	defp roles(n) do
 		villagers = (round (n/2)) |> replicate(:townie)
-		mafiosos =  (round (n/4)) |> replicate(:mafioso)
+		mafia =  (round (n/4)) |> replicate(:mafioso)
 		doctors =   (floor (n/8)) |> replicate(:doctor)
 		sheriffs =  (round (n/8)) |> replicate(:sheriff)
-		Enum.concat([villagers, mafiosos, doctors, sheriffs])
+		Enum.concat([villagers, mafia, doctors, sheriffs])
+	end
+
+	defp roles(n, roles) do
+		roles
+		|> Enum.reduce([], fn {role, amount}, acc -> [replicate(amount, role) | acc] end)
+		|> Enum.concat()
+		|> (& replicate(n - length(&1), :townie) ++ &1).()
 	end
 
 	defp replicate(0, _), do: []
@@ -437,6 +522,11 @@ defmodule MafiaEngine.Game do
 		players_without_role = Enum.map(players, &Player.set_role(&1, :unknown))
 		PubSub.pub(data.game_id, {:game_update, :players, players_without_role})
 		%{data | players: players}
+	end
+
+	defp update_settings(data, settings) do
+		PubSub.pub(data.game_id, {:game_update, :settings, settings})
+		%{data | settings: settings}
 	end
 
 	defp update_accusations(data, accusations) do
@@ -457,7 +547,7 @@ defmodule MafiaEngine.Game do
 					PubSub.pub(game_id, {:game_update, :role, {target, Players.get(acc_players, target).role}})
 					Players.kill(acc_players, target)
 				{actor, :investigate, target}, acc_players ->
-					PubSub.pub_player(game_id, actor, {:player_update, :role, {target, Players.get(acc_players, target).role}})
+					PubSub.pub_player(game_id, actor, {:game_update, :role, {target, Players.get(acc_players, target).role}})
 					acc_players
 				_event, acc_players ->
 					acc_players
@@ -480,12 +570,12 @@ defmodule MafiaEngine.Game do
       |> Enum.filter(&(&1.alive))
 
     players_count = length(alive_players)
-    mafiosos_count = Enum.count(alive_players, &(&1.role == :mafioso))
+    mafia_count = Enum.count(alive_players, &(&1.role == :mafioso))
 
     cond do
-      mafiosos_count == 0 ->
+      mafia_count == 0 ->
         {:win, :town}
-      2 * mafiosos_count >= players_count ->
+      2 * mafia_count >= players_count ->
         {:win, :mafia}
       true ->
         :no_win
@@ -510,7 +600,7 @@ defmodule MafiaEngine.Game do
 
 	defp success(:next_state, next_state, data, actions) do
 		PubSub.pub(data.game_id, {:game_update, :phase, next_state})
-		PubSub.pub(data.game_id, {:game_update, :timer, @timeout})
+		PubSub.pub(data.game_id, {:game_update, :timer, data.settings.timer[next_state]})
 		{:next_state, next_state, data, [@afk_timeout_action | actions]}
 	end
 

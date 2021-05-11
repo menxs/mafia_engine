@@ -32,14 +32,14 @@ defmodule MafiaEngine.PubSub do
 	def pub_roles(game_id, players) do
 		#Tell everyone their role
 		for p <- players do
-			pub_player(game_id, p.name, {:player_update, :role, {p.name, p.role}})
+			pub_player(game_id, p.name, {:game_update, :role, {p.name, p.role}})
 		end
 		#Tell the mafia their allies roles
 		mafiosos = Enum.filter(players, fn p -> p.role == :mafioso end)
 		Enum.map(mafiosos,
 				fn p ->
 					for ally <- mafiosos do
-						pub_player(game_id, p.name, {:player_update, :role, {ally.name, p.role}})
+						pub_player(game_id, p.name, {:game_update, :role, {ally.name, p.role}})
 					end
 				end)
 	end
