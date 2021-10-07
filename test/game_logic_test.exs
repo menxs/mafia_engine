@@ -1,12 +1,15 @@
-
 defmodule GameLogicTest do
   use ExUnit.Case
   use PropCheck
   use PropCheck.StateM
 
-  property "game logic stateful property", [:verbose, {:constraint_tries, 500}, {:numtests, 1000}, {:max_size, 80}] do
+  property "game logic stateful property", [
+    :verbose,
+    {:constraint_tries, 500},
+    {:numtests, 1000},
+    {:max_size, 80}
+  ] do
     forall cmds <- commands(__MODULE__, initial_state(12)) do
-      
       game_setup(initial_state(12))
       {history, state, result} = run_commands(__MODULE__, cmds)
       game_cleanup()
@@ -27,15 +30,15 @@ defmodule GameLogicTest do
     %{
       phase: :afternoon,
       players: %{
-          "Jeff" => %{alive: true, role: :mafioso},
-          "Britta" => %{alive: true, role: :townie},
-          "Abed" => %{alive: true, role: :doctor},
-          "Shirley" => %{alive: true, role: :sheriff},
-          "Annie" => %{alive: true, role: :townie},
-          "Troy" => %{alive: true, role: :townie},
-          "Pierce" => %{alive: true, role: :mafioso},
-          "Craig" => %{alive: true, role: :townie}
-        },
+        "Jeff" => %{alive: true, role: :mafioso},
+        "Britta" => %{alive: true, role: :townie},
+        "Abed" => %{alive: true, role: :doctor},
+        "Shirley" => %{alive: true, role: :sheriff},
+        "Annie" => %{alive: true, role: :townie},
+        "Troy" => %{alive: true, role: :townie},
+        "Pierce" => %{alive: true, role: :mafioso},
+        "Craig" => %{alive: true, role: :townie}
+      },
       accusations: [],
       accused: "",
       votes: [],
@@ -44,11 +47,10 @@ defmodule GameLogicTest do
   end
 
   def initial_state(n) do
-
-    villagers = List.duplicate(:townie, round(n/2))
-    mafiosos =  List.duplicate(:mafioso, round(n/4))
-    doctors =   List.duplicate(:doctor, floor (n/8))
-    sheriffs =  List.duplicate(:sheriff, round(n/4))
+    villagers = List.duplicate(:townie, round(n / 2))
+    mafiosos = List.duplicate(:mafioso, round(n / 4))
+    doctors = List.duplicate(:doctor, floor(n / 8))
+    sheriffs = List.duplicate(:sheriff, round(n / 4))
     roles = Enum.concat([villagers, mafiosos, doctors, sheriffs])
 
     players =
@@ -64,25 +66,29 @@ defmodule GameLogicTest do
   def game_setup(s) do
     MafiaEngine.Game.start_link("Testing")
 
-    s.players
-    |> Map.keys()
-    |> Enum.reverse()
-    |> Enum.map(&MafiaEngine.Game.add_player("Testing", &1))
+    names =
+      s.players
+      |> Map.keys()
+      |> Enum.reverse()
+
+    for name <- names do
+      MafiaEngine.Game.add_player("Testing", name)
+    end
 
     MafiaEngine.Game.start_game("Testing")
 
-    role_fun =
-      fn players ->
-        Enum.map(players,
-          fn %{name: name} = p ->
-            %{p | role: s.players[name].role}
-          end)
-      end
+    role_fun = fn players ->
+      Enum.map(
+        players,
+        fn %{name: name} = p ->
+          %{p | role: s.players[name].role}
+        end
+      )
+    end
 
-    state_fun =
-      fn game_state ->
-        {:afternoon, update_in(elem(game_state, 1), [:players], role_fun)}
-      end
+    state_fun = fn game_state ->
+      {:afternoon, update_in(elem(game_state, 1), [:players], role_fun)}
+    end
 
     :sys.replace_state(game_pid(), state_fun)
   end
@@ -95,24 +101,24 @@ defmodule GameLogicTest do
 
   def command(%{phase: :accusation} = s) do
     frequency([
-    {20, {:call, MafiaEngine.Game, :accuse, ["Testing", name(s), name(s)]}},
-    {5, {:call, __MODULE__, :all_accuse, [alive_players(s), name(s)]}},
-    {1, {:call, MafiaEngine.Game, :next_phase, ["Testing"]}}
+      {20, {:call, MafiaEngine.Game, :accuse, ["Testing", name(s), name(s)]}},
+      {5, {:call, __MODULE__, :all_accuse, [alive_players(s), name(s)]}},
+      {1, {:call, MafiaEngine.Game, :next_phase, ["Testing"]}}
     ])
   end
 
   def command(%{phase: :judgement} = s) do
     frequency([
-    {10, {:call, MafiaEngine.Game, :vote_innocent, ["Testing", name(s)]}},
-    {10, {:call, MafiaEngine.Game, :vote_guilty, ["Testing", name(s)]}},
-    {1, {:call, MafiaEngine.Game, :next_phase, ["Testing"]}}
+      {10, {:call, MafiaEngine.Game, :vote_innocent, ["Testing", name(s)]}},
+      {10, {:call, MafiaEngine.Game, :vote_guilty, ["Testing", name(s)]}},
+      {1, {:call, MafiaEngine.Game, :next_phase, ["Testing"]}}
     ])
   end
 
   def command(%{phase: :night} = s) do
     frequency([
-    {20, {:call, MafiaEngine.Game, :select, ["Testing", name(s), name(s)]}},
-    {1, {:call, MafiaEngine.Game, :next_phase, ["Testing"]}}
+      {20, {:call, MafiaEngine.Game, :select, ["Testing", name(s), name(s)]}},
+      {1, {:call, MafiaEngine.Game, :next_phase, ["Testing"]}}
     ])
   end
 
@@ -121,36 +127,39 @@ defmodule GameLogicTest do
   # Preconditions
 
   def precondition(s, {:call, _mod, :accuse, [_, accuser, accused]}) do
-    s.phase == :accusation
-    && s.players[accuser].alive
-    && s.players[accused].alive
-    && not has_accused?(s, accuser)
+    s.phase == :accusation &&
+      s.players[accuser].alive &&
+      s.players[accused].alive &&
+      not has_accused?(s, accuser)
   end
 
   def precondition(s, {:call, _mod, :all_accuse, [_, accused]}) do
-    s.phase == :accusation
-    && s.players[accused].alive
+    s.phase == :accusation &&
+      s.players[accused].alive
   end
 
-  def precondition(s, {:call, _mod, :vote_innocent, [_, voter]}), do:
-    s.phase == :judgement
-    && s.players[voter].alive
-    && voter != s.accused
-    && not has_voted?(s, voter)
+  def precondition(s, {:call, _mod, :vote_innocent, [_, voter]}),
+    do:
+      s.phase == :judgement &&
+        s.players[voter].alive &&
+        voter != s.accused &&
+        not has_voted?(s, voter)
 
-  def precondition(s, {:call, _mod, :vote_guilty, [_, voter]}), do:
-    s.phase == :judgement
-    && s.players[voter].alive
-    && voter != s.accused
-    && not has_voted?(s, voter)
+  def precondition(s, {:call, _mod, :vote_guilty, [_, voter]}),
+    do:
+      s.phase == :judgement &&
+        s.players[voter].alive &&
+        voter != s.accused &&
+        not has_voted?(s, voter)
 
-  def precondition(s, {:call, _mod, :select, [_, actor, target]}), do:
-    s.phase == :night
-    && s.players[actor].alive
-    && s.players[target].alive
-    && s.players[actor].role != :townie
-    && not (s.players[actor].role == :mafioso and s.players[target].role == :mafioso)
-    && not has_selected?(s, actor)
+  def precondition(s, {:call, _mod, :select, [_, actor, target]}),
+    do:
+      s.phase == :night &&
+        s.players[actor].alive &&
+        s.players[target].alive &&
+        s.players[actor].role != :townie &&
+        not (s.players[actor].role == :mafioso and s.players[target].role == :mafioso) &&
+        not has_selected?(s, actor)
 
   def precondition(_s, {:call, _mod, _fun, _args}), do: true
 
@@ -161,8 +170,8 @@ defmodule GameLogicTest do
   end
 
   def postcondition(_s, {:call, _mod, :all_accuse, [_, accused]}, _res) do
-    game_phase() == :defense
-    && Map.get(game_votes(), :accused) == accused
+    game_phase() == :defense &&
+      Map.get(game_votes(), :accused) == accused
   end
 
   def postcondition(_s, {:call, _mod, :vote_innocent, [_, voter]}, _res) do
@@ -191,8 +200,8 @@ defmodule GameLogicTest do
 
   def postcondition(%{phase: :judgement} = s, {:call, _mod, :next_state, _args}, _res) do
     if guilty?(s) do
-      game_player(s.accused).alive == false
-      && (game_phase() == :afternoon or game_phase() == :game_over)
+      game_player(s.accused).alive == false &&
+        (game_phase() == :afternoon or game_phase() == :game_over)
     else
       game_phase() == :afternoon
     end
@@ -203,7 +212,7 @@ defmodule GameLogicTest do
   end
 
   def postcondition(%{phase: :night}, {:call, _mod, :next_state, _args}, _res) do
-    (game_phase() == :morning or game_phase() == :game_over)
+    game_phase() == :morning or game_phase() == :game_over
   end
 
   def postcondition(%{phase: :end}, {:call, _mod, _fun, _args}, _res) do
@@ -251,7 +260,7 @@ defmodule GameLogicTest do
   end
 
   def next_state(%{phase: :defense} = s, _res, {:call, _mod, :next_phase, _args}) do
-   set_phase(s, :judgement)
+    set_phase(s, :judgement)
   end
 
   def next_state(%{phase: :judgement} = s, _res, {:call, _mod, :next_phase, _args}) do
@@ -268,8 +277,8 @@ defmodule GameLogicTest do
 
   def do_nothing(), do: :ok
 
-  def all_accuse(accusers, accused), do:
-    Enum.map(accusers, &MafiaEngine.Game.accuse("Testing", &1, accused))
+  def all_accuse(accusers, accused),
+    do: Enum.map(accusers, &MafiaEngine.Game.accuse("Testing", &1, accused))
 
   def set_phase(s, phase), do: %{s | phase: phase}
 
@@ -291,14 +300,13 @@ defmodule GameLogicTest do
     alive_mafiosos = alive_mafiosos(s)
     alive_doctors = alive_doctors(s)
 
-    targets = 
+    targets =
       s.selections
       |> Enum.filter(&(elem(&1, 0) in alive_mafiosos))
       |> Enum.map(fn {_actor, target} -> target end)
       |> Enum.frequencies()
 
     if targets != %{} do
-
       mafia_target =
         targets
         |> Enum.max_by(fn {_target, freq} -> freq end)
@@ -324,20 +332,24 @@ defmodule GameLogicTest do
   def alive_mafiosos(s), do: alive_role_names(s, :mafioso)
 
   def alive_role_names(s, role) do
-    Enum.filter(s.players,
+    Enum.filter(
+      s.players,
       fn
         {_, %{role: r, alive: true}} when r == role -> true
         _ -> false
-      end)
+      end
+    )
     |> Enum.map(fn {name, _} -> name end)
   end
 
   def alive_players(s) do
-    Enum.filter(s.players,
+    Enum.filter(
+      s.players,
       fn
         {_, %{alive: true}} -> true
         _ -> false
-      end)
+      end
+    )
     |> Enum.map(fn {name, _} -> name end)
   end
 
@@ -356,15 +368,17 @@ defmodule GameLogicTest do
     end
   end
 
-  def guilty?(s), do:
-    s.votes
-    |> Enum.map(&elem(&1, 1))
-    |> Enum.count(&(&1 == :guilty))
-    |> (& &1 * 2 > length(s.votes)).()
+  def guilty?(s),
+    do:
+      s.votes
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.count(&(&1 == :guilty))
+      |> (&(&1 * 2 > length(s.votes))).()
 
   def check_end(s) do
     mf_c = length(alive_mafiosos(s))
     alv_c = length(alive_players(s))
+
     if mf_c * 2 >= alv_c or mf_c == 0 do
       set_phase(s, :end)
     else
@@ -374,25 +388,18 @@ defmodule GameLogicTest do
 
   def name(s), do: oneof(s.players |> Map.keys())
 
-  def game_pid(), do:
-    Registry.lookup(Registry.Game, "Testing") |> List.first() |> elem(0)
+  def game_pid(), do: Registry.lookup(Registry.Game, "Testing") |> List.first() |> elem(0)
 
-  def game_state(), do:
-    game_pid() |> :sys.get_state()
+  def game_state(), do: game_pid() |> :sys.get_state()
 
-  def game_phase(), do:
-    game_state() |> elem(0)
+  def game_phase(), do: game_state() |> elem(0)
 
-  def game_accusations(), do:
-    game_state() |> elem(1) |> Map.fetch!(:accusations)
- 
-  def game_votes(), do:
-    game_state() |> elem(1) |> Map.fetch!(:votes)
+  def game_accusations(), do: game_state() |> elem(1) |> Map.fetch!(:accusations)
 
-  def game_selections(), do:
-    game_state() |> elem(1) |> Map.fetch!(:night_actions)
+  def game_votes(), do: game_state() |> elem(1) |> Map.fetch!(:votes)
 
-  def game_player(name), do:
-    game_state() |> elem(1) |> Map.fetch!(:players) |> MafiaEngine.Players.get(name)
+  def game_selections(), do: game_state() |> elem(1) |> Map.fetch!(:night_actions)
 
+  def game_player(name),
+    do: game_state() |> elem(1) |> Map.fetch!(:players) |> MafiaEngine.Players.get(name)
 end

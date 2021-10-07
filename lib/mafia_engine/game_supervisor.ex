@@ -1,10 +1,10 @@
 defmodule MafiaEngine.GameSupervisor do
+  @moduledoc false
   use DynamicSupervisor
 
   alias MafiaEngine.Game
 
-  def start_link(_options), do:
-    DynamicSupervisor.start_link(__MODULE__, :ok, name: __MODULE__)
+  def start_link(_options), do: DynamicSupervisor.start_link(__MODULE__, :ok, name: __MODULE__)
 
   def start_game() do
     game_id = gen_game_id()
@@ -18,12 +18,11 @@ defmodule MafiaEngine.GameSupervisor do
   end
 
   def exists_id?(game_id) do
-    not(Registry.lookup(Registry.Game, game_id) == [])
+    not (Registry.lookup(Registry.Game, game_id) == [])
   end
 
   @impl true
-  def init(:ok), do:
-    DynamicSupervisor.init(strategy: :one_for_one)
+  def init(:ok), do: DynamicSupervisor.init(strategy: :one_for_one)
 
   defp gen_game_id() do
     id =

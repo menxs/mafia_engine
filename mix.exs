@@ -27,6 +27,7 @@ defmodule MafiaEngine.MixProject do
     [
       {:propcheck, "~> 1.3", only: [:test, :dev]},
       {:ex_doc, "~> 0.23", only: :dev, runtime: false},
+      {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:gen_state_machine, "~> 3.0"}
       # {:dep_from_hexpm, "~> 0.3.0"},
@@ -56,7 +57,7 @@ defmodule MafiaEngine.MixProject do
       plt_file: {:no_warn, "priv/plts/sorted.plt"},
       flags: [
         :unmatched_returns,
-        :no_unused, 
+        :no_unused,
         :no_match,
         :no_missing_calls,
         :error_handling,
@@ -64,5 +65,4 @@ defmodule MafiaEngine.MixProject do
       ]
     ]
   end
-
 end

@@ -10,15 +10,12 @@ defmodule MafiaEngine.Application do
     children = [
       {Registry, keys: :unique, name: Registry.Game},
       {Registry,
-        keys: :duplicate,
-        name: Registry.GamePubSub,
-        partitions: System.schedulers_online()
-      },
+       keys: :duplicate, name: Registry.GamePubSub, partitions: System.schedulers_online()},
       MafiaEngine.GameSupervisor
     ]
 
     :rand.uniform()
-    :ets.new(:game_state, [:public, :named_table])
+    _ets = :ets.new(:game_state, [:public, :named_table])
     opts = [strategy: :one_for_one, name: MafiaEngine.Supervisor]
     Supervisor.start_link(children, opts)
   end

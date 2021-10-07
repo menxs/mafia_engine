@@ -6,7 +6,7 @@ defmodule MafiaEngineTest do
   doctest MafiaEngine.Players
   doctest MafiaEngine.Accusations
   doctest MafiaEngine.Votes
-  #doctest MafiaEngine.NightActions
+  doctest MafiaEngine.NightActions
 
   test "greets the world" do
     assert MafiaEngine.hello() == :world
