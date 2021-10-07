@@ -1,9 +1,10 @@
-defmodule ShitTest do
+
+defmodule GameLogicTest do
   use ExUnit.Case
   use PropCheck
   use PropCheck.StateM
 
-  property "stateful property", [:verbose, {:constraint_tries, 500}, {:numtests, 1000}, {:max_size, 80}] do
+  property "game logic stateful property", [:verbose, {:constraint_tries, 500}, {:numtests, 1000}, {:max_size, 80}] do
     forall cmds <- commands(__MODULE__, initial_state(12)) do
       
       game_setup(initial_state(12))
@@ -117,7 +118,7 @@ defmodule ShitTest do
 
   def command(_), do: {:call, MafiaEngine.Game, :next_phase, ["Testing"]}
 
-  # Pre
+  # Preconditions
 
   def precondition(s, {:call, _mod, :accuse, [_, accuser, accused]}) do
     s.phase == :accusation
@@ -153,7 +154,7 @@ defmodule ShitTest do
 
   def precondition(_s, {:call, _mod, _fun, _args}), do: true
 
-  # Post
+  # Postconditions
 
   def postcondition(_s, {:call, _mod, :accuse, [_, accuser, accused]}, _res) do
     Map.get(game_accusations(), :ballots) |> Map.get(accuser) == accused
@@ -370,9 +371,6 @@ defmodule ShitTest do
       s
     end
   end
-
-  def name(), do:
-    oneof(["Jeff", "Britta", "Abed", "Shirley", "Annie", "Troy", "Pierce", "Craig"])
 
   def name(s), do: oneof(s.players |> Map.keys())
 
