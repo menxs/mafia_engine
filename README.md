@@ -47,4 +47,5 @@ Game.select(game_id, "Troy", "Abed")
 ```
 
 ## Architecture
-<img src="./diagrams/SComponentEngine.png" alt="MafiaEngine architechture" width="600"/>
+How the MafiaEngine components work while using [MafiaInterface](https://github.com/menxs/mafia_interface)
+<img src="./diagrams/SComponentEngine.png" alt="MafiaEngine architechture"/>
