@@ -47,4 +47,4 @@ Game.select(game_id, "Troy", "Abed")
 ```
 
 ## Architecture
-<img src="./doc/diagrams/SComponentEngine.png" alt="MafiaEngine architechture" width="600"/>
+<img src="./diagrams/SComponentEngine.png" alt="MafiaEngine architechture" width="600"/>
